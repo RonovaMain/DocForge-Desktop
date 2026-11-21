@@ -72,6 +72,8 @@ def make_runtime(runtime: Path) -> bool:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if OUT.exists():
         shutil.rmtree(OUT)
     OUT.mkdir(parents=True)
