@@ -1,0 +1,81 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-build.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Build document engine (Java + trimmed JRE)
+        run: python tools/build_engine.py
+
+      - name: Tests
+        run: python -m unittest discover -s tests -t . -v
+
+      # Драйверы печати foo2zjs и родственные (GPL). Шаг не обязательный: не собрались — программа выйдет без них
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc git curl
+      - name: Build printer filters (foo2zjs family)
+        continue-on-error: true
+        shell: msys2 {0}
+        run: bash tools/build_filters.sh
+
+      - name: Package with PyInstaller
+        run: pyinstaller packaging/docforge.spec --noconfirm
+
+      - name: Self-test of the built program
+        shell: pwsh
+        run: |
+          # программа оконная: обычный вызов не дожидается её завершения, поэтому Start-Process -Wait
+          $p = Start-Process -FilePath "dist\DocForge\DocForge.exe" -ArgumentList "--selftest", "$PWD\selftest.txt" -Wait -PassThru
+          Get-Content selftest.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Read version
+        id: ver
+        shell: pwsh
+        run: echo "version=$(python -c 'import docforge; print(docforge.__version__)')" >> $env:GITHUB_OUTPUT
+
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.ver.outputs.version }}" packaging\docforge.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DocForge-Windows-Setup
+          path: output/DocForge-*-Setup.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: output/DocForge-*-Setup.exe

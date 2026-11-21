@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+/build/
+/dist/
+/output/
+/build-drivers/
+*.egg-info/
+.venv/
+venv/
+.idea/
+.vscode/

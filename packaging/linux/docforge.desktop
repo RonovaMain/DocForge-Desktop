@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=DocForge
+GenericName=Просмотр и правка документов
+GenericName[en]=Document viewer and editor
+Comment=Просмотр и правка DOCX, XLSX, PPTX, ODT, ODS, ODP, просмотр PDF
+Exec=@EXEC@ %f
+Icon=@ICON@
+Terminal=false
+Categories=Office;Viewer;
+MimeType=application/vnd.openxmlformats-officedocument.wordprocessingml.document;application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.presentationml.presentation;application/vnd.oasis.opendocument.text;application/vnd.oasis.opendocument.spreadsheet;application/vnd.oasis.opendocument.presentation;application/pdf;
+StartupWMClass=DocForge
