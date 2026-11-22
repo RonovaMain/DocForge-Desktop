@@ -22,7 +22,7 @@ missing = [m for m in QT_MODULES
 if missing:
     raise SystemExit(
         "В установленном PyQt6 нет модулей: " + ", ".join(missing)
-        + f"\nПапка: {qt_dir}\nПереустановите: pip install --force-reinstall -r requirements.txt"
+        + f"\nПапка: {qt_dir}\nQtPdf ставится отдельным пакетом PyQt6-Pdf; переустановите: pip install --force-reinstall -r requirements.txt"
     )
 hiddenimports = ["PyQt6." + m for m in QT_MODULES]
 
