@@ -29,7 +29,7 @@ def _minimal_docx() -> bytes:
 
 
 QT_MODULES = ("QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtPrintSupport",
-              "QtPdf", "QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets")
+              "QtPdf", "QtSvg", "QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets")
 
 
 def check_qt() -> None:
@@ -46,6 +46,25 @@ def check_qt() -> None:
         raise RuntimeError("Qt не загрузился: " + "; ".join(failed))
 
 
+def check_pdf_edit() -> None:
+    """Правка PDF: создаём файл, вшиваем пометку, удаляем страницу. Ловит pikepdf, не попавший в сборку."""
+    import pikepdf
+
+    from . import pdfedit
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src, marked, cut = (os.path.join(tmp, n) for n in ("a.pdf", "b.pdf", "c.pdf"))
+        pdf = pikepdf.new()
+        pdf.add_blank_page(page_size=(200, 300))
+        pdf.add_blank_page(page_size=(200, 300))
+        pdf.save(src)
+        pdf.close()
+        op = pdfedit.clean_op({"tool": "cover", "color": "#ff0000", "rect": [0.1, 0.1, 0.4, 0.3]})
+        pdfedit.write_with_ops(src, marked, {0: [op]})
+        if pdfedit.write_without_pages(marked, cut, [1]) != 1:
+            raise RuntimeError("удаление страницы PDF не сработало")
+
+
 def run(result_path: str | None) -> int:
     from .engine import EngineClient
     from .paths import engine_command
@@ -54,6 +73,7 @@ def run(result_path: str | None) -> int:
     engine = None
     try:
         check_qt()
+        check_pdf_edit()
         engine = EngineClient()
         if not engine.ping():
             raise RuntimeError("движок не ответил на ping")

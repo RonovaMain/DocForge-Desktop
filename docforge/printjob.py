@@ -152,7 +152,11 @@ class PrintController(QObject):
 
     def start(self) -> None:
         if self._doc.kind == "pdf":
-            self._pdf = self._doc.work
+            try:
+                self._pdf = self._doc.printable_pdf()  # с несохранёнными пометками
+            except Exception as e:  # noqa: BLE001
+                self._fail(f"Не удалось подготовить PDF к печати: {e}")
+                return
             self._pdf_ready()
             return
         o = self._req.options

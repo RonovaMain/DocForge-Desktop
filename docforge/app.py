@@ -3,47 +3,9 @@ from __future__ import annotations
 
 import sys
 
-from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import QApplication
 
 from . import APP_NAME, AUTHOR, __version__
-
-
-_default_style = ""
-
-
-def apply_theme(app: QApplication, mode: str) -> None:
-    """system — как в ОС; light/dark — своя палитра на стиле Fusion."""
-    global _default_style
-    if not _default_style:
-        _default_style = app.style().objectName()
-    if mode == "system":
-        app.setStyle(_default_style)
-        app.setPalette(app.style().standardPalette())
-        return
-    app.setStyle("Fusion")
-    if mode == "light":
-        app.setPalette(app.style().standardPalette())
-        return
-    p = QPalette()
-    base, text = QColor(32, 33, 36), QColor(232, 234, 237)
-    p.setColor(QPalette.ColorRole.Window, QColor(45, 46, 50))
-    p.setColor(QPalette.ColorRole.WindowText, text)
-    p.setColor(QPalette.ColorRole.Base, base)
-    p.setColor(QPalette.ColorRole.AlternateBase, QColor(45, 46, 50))
-    p.setColor(QPalette.ColorRole.ToolTipBase, base)
-    p.setColor(QPalette.ColorRole.ToolTipText, text)
-    p.setColor(QPalette.ColorRole.Text, text)
-    p.setColor(QPalette.ColorRole.Button, QColor(53, 54, 58))
-    p.setColor(QPalette.ColorRole.ButtonText, text)
-    p.setColor(QPalette.ColorRole.BrightText, QColor(255, 80, 80))
-    p.setColor(QPalette.ColorRole.Link, QColor(138, 180, 248))
-    p.setColor(QPalette.ColorRole.Highlight, QColor(66, 99, 190))
-    p.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
-    gray = QColor(128, 128, 128)
-    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
-        p.setColor(QPalette.ColorGroup.Disabled, role, gray)
-    app.setPalette(p)
 
 
 def main() -> int:
@@ -55,15 +17,19 @@ def main() -> int:
     app.setOrganizationName(AUTHOR)
     app.setApplicationVersion(__version__)
 
+    from . import theme
     from .config import Settings
     from .engine import EngineClient
     from .mainwindow import MainWindow
 
     settings = Settings()
-    global _default_style
-    _default_style = app.style().objectName()  # стиль ОС: к нему возвращает режим «как в системе»
-    apply_theme(app, settings["theme"])
+    theme.setup_font(app)
+    theme.apply(app, settings["theme"])
     window = MainWindow(EngineClient(), settings)
+    try:  # тема ОС сменилась, пока программа открыта (Qt 6.5+)
+        app.styleHints().colorSchemeChanged.connect(lambda *_: window.on_system_scheme_changed())
+    except AttributeError:
+        pass
     window.show()
     args = [a for a in sys.argv[1:] if not a.startswith("-")]  # путь к документу (из «Открыть с помощью»)
     if args:

@@ -14,7 +14,7 @@ binaries = []
 # а не выдаст exe, который падает при запуске с «No module named 'PyQt6.QtPdf'».
 QT_MODULES = [
     "QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtPrintSupport",
-    "QtPdf", "QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets",
+    "QtPdf", "QtSvg", "QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets",
 ]
 qt_dir = Path(PyQt6.__file__).parent
 missing = [m for m in QT_MODULES
@@ -24,7 +24,7 @@ if missing:
         "В установленном PyQt6 нет модулей: " + ", ".join(missing)
         + f"\nПапка: {qt_dir}\nQtPdf ставится отдельным пакетом PyQt6-Pdf; переустановите: pip install --force-reinstall -r requirements.txt"
     )
-hiddenimports = ["PyQt6." + m for m in QT_MODULES]
+hiddenimports = ["PyQt6." + m for m in QT_MODULES] + ["pikepdf", "lxml", "lxml.etree", "lxml._elementpath", "PIL"]
 
 engine = build / "engine"
 if not (engine / "engine.jar").is_file():
@@ -45,7 +45,7 @@ a = Analysis(
     datas=datas,
     binaries=binaries,
     hiddenimports=hiddenimports,
-    excludes=["tkinter", "matplotlib", "scipy", "pandas", "PIL"],
+    excludes=["tkinter", "matplotlib", "scipy", "pandas"],  # PIL нужен pikepdf
 )
 pyz = PYZ(a.pure)
 exe = EXE(

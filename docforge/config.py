@@ -10,6 +10,8 @@ DEFAULTS = {
     "theme": "system",       # system | light | dark — оформление окна
     "night_documents": False,  # тёмная тема документов
     "text_scale": 100,         # размер текста документов, %
+    "pdf_zoom_mode": "width",  # width | page | custom — как показывать страницы PDF
+    "pdf_zoom": 100,           # масштаб PDF в %, если режим custom
     "print_mode": "system",    # system | builtin
     "recent": [],
     "print": {},               # последние параметры печати

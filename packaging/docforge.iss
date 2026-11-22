@@ -1,7 +1,7 @@
 ; Установщик DocForge для Windows (Inno Setup 6).
-; Сборка: ISCC.exe /DAppVersion=0.7.4 packaging\docforge.iss  (после pyinstaller: нужна папка dist\DocForge)
+; Сборка: ISCC.exe /DAppVersion=0.8.0 packaging\docforge.iss  (после pyinstaller: нужна папка dist\DocForge)
 #ifndef AppVersion
-  #define AppVersion "0.7.4"
+  #define AppVersion "0.8.0"
 #endif
 #define AppName "DocForge"
 #define AppExe "DocForge.exe"

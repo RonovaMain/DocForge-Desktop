@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import numpy as np
-from PyQt6.QtCore import QBuffer, QIODevice, QSize, Qt
+from PyQt6.QtCore import QBuffer, QIODevice, QPointF, QSize, Qt
 from PyQt6.QtGui import QImage, QPainter
 from PyQt6.QtPdf import QPdfDocument
 
@@ -39,6 +39,34 @@ class PdfSource:
             s = self.doc.pagePointSize(i)
             out.append((max(1, round(s.width())), max(1, round(s.height()))))
         return out
+
+    def page_sizes_f(self) -> list[tuple[float, float]]:
+        """Размеры страниц в пунктах без округления — по ним страница просмотра считает масштаб."""
+        out = []
+        for i in range(self.doc.pageCount()):
+            s = self.doc.pagePointSize(i)
+            out.append((max(1.0, s.width()), max(1.0, s.height())))
+        return out
+
+    def select_text(self, index: int, x0: float, y0: float, x1: float, y1: float) -> tuple[list[list[float]], str]:
+        """Текст между двумя точками страницы (доли ширины и высоты, от левого верхнего угла).
+
+        Возвращает прямоугольники строк в тех же долях и сам текст. У сканов текста нет — список пустой.
+        """
+        if index < 0 or index >= self.doc.pageCount():
+            return [], ""
+        size = self.doc.pagePointSize(index)
+        w, h = max(1.0, size.width()), max(1.0, size.height())
+        sel = self.doc.getSelection(index, QPointF(x0 * w, y0 * h), QPointF(x1 * w, y1 * h))
+        if not sel.isValid():
+            return [], ""
+        rects = []
+        for poly in sel.bounds():
+            r = poly.boundingRect()
+            if r.width() <= 0 or r.height() <= 0:
+                continue
+            rects.append([max(0.0, r.left() / w), max(0.0, r.top() / h), min(1.0, r.right() / w), min(1.0, r.bottom() / h)])
+        return rects, sel.text()
 
     def _render(self, index: int, width: int, height: int) -> QImage:
         image = self.doc.render(index, QSize(width, height))

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 
-from PyQt6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, QPoint, Qt, QUrl, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QBuffer, QByteArray, QFile, QIODevice, QObject, QPoint, Qt, QUrl, QUrlQuery, pyqtSignal, pyqtSlot
 from PyQt6.QtGui import QAction
 from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtWebEngineCore import (
@@ -33,11 +33,19 @@ def register_scheme() -> None:
 _SHIM = r"""
 (function () {
   var queue = [], bridge = null;
-  function call(name, args) { if (bridge) { bridge[name].apply(bridge, args); } else { queue.push([name, args]); } }
+  function call(name, args, cb) {
+    var a = cb ? args.concat([cb]) : args;
+    if (bridge) { bridge[name].apply(bridge, a); } else { queue.push([name, a]); }
+  }
   window.Android = {
     edit: function (id) { call('edit', [String(id)]); },
     page: function (c, t) { call('page', [c | 0, t | 0]); },
-    presRect: function (i, x, y, w, h, vw) { call('presRect', [i | 0, +x, +y, +w, +h, +vw]); }
+    presRect: function (i, x, y, w, h, vw) { call('presRect', [i | 0, +x, +y, +w, +h, +vw]); },
+    zoom: function (p, m) { call('zoom', [p | 0, String(m)]); },
+    addOp: function (i, json) { call('addOp', [i | 0, String(json)]); },
+    eraseOp: function (i, k) { call('eraseOp', [i | 0, k | 0]); },
+    hint: function (m) { call('hint', [String(m)]); },
+    selectText: function (i, a, b, c, d, cb) { call('selectText', [i | 0, +a, +b, +c, +d], cb); }
   };
   new QWebChannel(qt.webChannelTransport, function (channel) {
     bridge = channel.objects.bridge;
@@ -61,6 +69,14 @@ class Bridge(QObject):
     editRequested = pyqtSignal(str)
     pageReported = pyqtSignal(int, int)
     presRectReported = pyqtSignal(int, float, float, float, float, float)
+    zoomReported = pyqtSignal(int, str)        # масштаб в процентах и режим (width | page | custom)
+    markAdded = pyqtSignal(int, str)           # страница, пометка в JSON
+    markErased = pyqtSignal(int, int)          # страница, номер пометки
+    hintReported = pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.selector = None  # (страница, x0, y0, x1, y1) -> (прямоугольники, текст)
 
     @pyqtSlot(str)
     def edit(self, element_id: str) -> None:
@@ -73,6 +89,32 @@ class Bridge(QObject):
     @pyqtSlot(int, float, float, float, float, float)
     def presRect(self, index: int, x: float, y: float, w: float, h: float, vw: float) -> None:
         self.presRectReported.emit(index, x, y, w, h, vw)
+
+    @pyqtSlot(int, str)
+    def zoom(self, percent: int, mode: str) -> None:
+        self.zoomReported.emit(percent, mode)
+
+    @pyqtSlot(int, str)
+    def addOp(self, page: int, payload: str) -> None:
+        self.markAdded.emit(page, payload)
+
+    @pyqtSlot(int, int)
+    def eraseOp(self, page: int, index: int) -> None:
+        self.markErased.emit(page, index)
+
+    @pyqtSlot(str)
+    def hint(self, message: str) -> None:
+        self.hintReported.emit(message)
+
+    @pyqtSlot(int, float, float, float, float, result=str)
+    def selectText(self, page: int, x0: float, y0: float, x1: float, y1: float) -> str:
+        rects, text = [], ""
+        if self.selector is not None:
+            try:
+                rects, text = self.selector(page, x0, y0, x1, y1)
+            except Exception:  # noqa: BLE001 - выделение не должно ронять программу
+                rects, text = [], ""
+        return json.dumps({"rects": rects, "text": text})
 
 
 class DocSchemeHandler(QWebEngineUrlSchemeHandler):
@@ -97,7 +139,13 @@ class DocSchemeHandler(QWebEngineUrlSchemeHandler):
                     index = int(path[5:])
                 except ValueError:
                     index = -1
-                data, mime = doc.pdf.render_jpeg(index, self._view.pdf_width()), "image/jpeg"
+                query = QUrlQuery(job.requestUrl())
+                try:
+                    width = int(query.queryItemValue("w") or 0)
+                except ValueError:
+                    width = 0
+                width = max(300, min(4200, width)) if width else self._view.pdf_width()
+                data, mime = doc.pdf.render_jpeg(index, width), "image/jpeg"
         if not data or not mime:
             job.fail(QWebEngineUrlRequestJob.Error.UrlNotFound)
             return
@@ -129,6 +177,7 @@ class DocView(QWebEngineView):
         self.presenting = False
         self._counter = 0
         self.bridge = Bridge(self)
+        self.bridge.selector = self._select_text
 
         from PyQt6.QtWidgets import QApplication
 
@@ -191,6 +240,53 @@ class DocView(QWebEngineView):
             self.page().runJavaScript(code)
         else:
             self.page().runJavaScript(code, callback)
+
+    def _select_text(self, page: int, x0: float, y0: float, x1: float, y1: float):
+        if self.doc is None or self.doc.pdf is None:
+            return [], ""
+        return self.doc.pdf.select_text(page, x0, y0, x1, y1)
+
+    def set_chrome(self, dark: bool, kind: str) -> None:
+        """Фон за страницами документа под тему окна (сама бумага остаётся белой)."""
+        bg = "#232429" if dark else "#e6e7eb"
+        code = (
+            "(function(){var r=document.documentElement;"
+            f"if(window.setChrome){{setChrome({json.dumps(bool(dark))});}}"
+            f"else if({json.dumps(kind in ('text', 'slides'))}){{r.style.background={json.dumps(bg)};"
+            f"document.body.style.background={json.dumps(bg)};r.style.colorScheme={json.dumps('dark' if dark else 'light')};}}"
+            "})();"
+        )
+        self.js(code)
+
+    # --- PDF: масштаб и пометки
+    def pdf_zoom_mode(self, mode: str, percent: int = 100) -> None:
+        self.js(f"if(window.setZoom){{setZoom({json.dumps(mode)},{int(percent)})}}")
+
+    def pdf_zoom_step(self, direction: int) -> None:
+        self.js(f"if(window.zoomStep){{zoomStep({int(direction)})}}")
+
+    def pdf_zoom_by(self, factor: float) -> None:
+        self.js(f"if(window.zoomBy){{zoomBy({float(factor)})}}")
+
+    def set_tool(self, tool: str, color: str, width_pt: float) -> None:
+        self.js(f"if(window.setTool){{setTool({json.dumps(tool)},{json.dumps(color)},{float(width_pt)})}}")
+
+    def set_marks(self, page: int, marks: list) -> None:
+        self.js(f"if(window.setOps){{setOps({int(page)},{json.dumps(json.dumps(marks))})}}")
+
+    def clear_marks(self) -> None:
+        self.js("if(window.clearOps){clearOps()}")
+
+    def reload_pages(self) -> None:
+        self.js("if(window.reloadPages){reloadPages()}")
+
+    def set_slide_width(self, width_px: int) -> None:
+        """Слайды занимают всю ширину окна, поэтому масштаб браузера на них не виден: задаём им ширину сами."""
+        self.js(
+            "(function(){var b=document.body;if(!b||!document.querySelector('.slidebox')){return;}"
+            f"var w={int(width_px)};b.style.width=w?w+'px':'';b.style.margin=w?'0 auto':'';"
+            "window.dispatchEvent(new Event('resize'));})();"
+        )
 
     def set_night(self, on: bool) -> None:
         self.js(f"if(window.setNight){{setNight({json.dumps(bool(on))})}}")
