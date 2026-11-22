@@ -2,25 +2,29 @@
 # Сборка: pyinstaller packaging/docforge.spec --noconfirm   (перед этим: python tools/build_engine.py)
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_all
+import PyQt6
 
 root = Path(SPECPATH).parent
 build = root / "build"
 datas = [(str(root / "docforge" / "resources"), "docforge/resources")]
 binaries = []
-hiddenimports = []
 
-for pkg in (
-    "PyQt6.QtPdf",
-    "PyQt6.QtWebEngineCore",
-    "PyQt6.QtWebEngineWidgets",
-    "PyQt6.QtWebChannel",
-    "PyQt6.QtPrintSupport",
-):
-    d, b, h = collect_all(pkg)
-    datas += d
-    binaries += b
-    hiddenimports += h
+# Все модули Qt, которые импортирует программа. Явный список: PyInstaller подхватит их DLL, плагины и
+# ресурсы WebEngine своими хуками, а если модуля нет в установленном PyQt6 — сборка остановится здесь,
+# а не выдаст exe, который падает при запуске с «No module named 'PyQt6.QtPdf'».
+QT_MODULES = [
+    "QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtPrintSupport",
+    "QtPdf", "QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets",
+]
+qt_dir = Path(PyQt6.__file__).parent
+missing = [m for m in QT_MODULES
+           if not any(f.suffix in (".pyd", ".so") for f in qt_dir.glob(m + ".*"))]
+if missing:
+    raise SystemExit(
+        "В установленном PyQt6 нет модулей: " + ", ".join(missing)
+        + f"\nПапка: {qt_dir}\nПереустановите: pip install --force-reinstall -r requirements.txt"
+    )
+hiddenimports = ["PyQt6." + m for m in QT_MODULES]
 
 engine = build / "engine"
 if not (engine / "engine.jar").is_file():

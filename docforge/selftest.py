@@ -1,5 +1,5 @@
 """Самопроверка собранной программы без окна: `DocForge --selftest результат.txt`.
-Проверяет, что движок документов (своя JRE + engine.jar) запускается и читает и правит DOCX. Нужна для проверки сборок в CI."""
+Проверяет, что модули Qt загружаются, движок документов (своя JRE + engine.jar) запускается и читает и правит DOCX. Нужна для проверки сборок в CI."""
 from __future__ import annotations
 
 import io
@@ -28,6 +28,24 @@ def _minimal_docx() -> bytes:
     return buf.getvalue()
 
 
+QT_MODULES = ("QtCore", "QtGui", "QtWidgets", "QtNetwork", "QtPrintSupport",
+              "QtPdf", "QtWebChannel", "QtWebEngineCore", "QtWebEngineWidgets")
+
+
+def check_qt() -> None:
+    """Импорт всех модулей Qt без создания окна: ловит модули, не попавшие в сборку."""
+    import importlib
+
+    failed = []
+    for name in QT_MODULES:
+        try:
+            importlib.import_module("PyQt6." + name)
+        except Exception as e:  # noqa: BLE001
+            failed.append(f"{name}: {e}")
+    if failed:
+        raise RuntimeError("Qt не загрузился: " + "; ".join(failed))
+
+
 def run(result_path: str | None) -> int:
     from .engine import EngineClient
     from .paths import engine_command
@@ -35,6 +53,7 @@ def run(result_path: str | None) -> int:
     message, code = "OK", 0
     engine = None
     try:
+        check_qt()
         engine = EngineClient()
         if not engine.ping():
             raise RuntimeError("движок не ответил на ping")

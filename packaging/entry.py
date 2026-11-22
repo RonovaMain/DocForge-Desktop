@@ -1,7 +1,7 @@
 """Точка входа для PyInstaller (внутри пакета относительные импорты, поэтому запуск через docforge.*)."""
 import sys
 
-if "--selftest" in sys.argv:  # проверка сборки без окна и без Qt: DocForge --selftest результат.txt
+if "--selftest" in sys.argv:  # проверка сборки без окна (движок + импорт модулей Qt): DocForge --selftest результат.txt
     from docforge.selftest import run
 
     i = sys.argv.index("--selftest")

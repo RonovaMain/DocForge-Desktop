@@ -50,6 +50,15 @@ jobs:
       - name: Package with PyInstaller
         run: pyinstaller packaging/docforge.spec --noconfirm
 
+      - name: Check Qt files in the build
+        shell: pwsh
+        run: |
+          foreach ($pat in "QtPdf*.pyd", "QtWebEngineCore*.pyd", "QtWebEngineProcess.exe") {
+            $f = Get-ChildItem -Path dist\DocForge -Recurse -Filter $pat -ErrorAction SilentlyContinue
+            if (-not $f) { Write-Error "В сборке нет $pat"; exit 1 }
+            Write-Host "OK: $($f[0].FullName)"
+          }
+
       - name: Self-test of the built program
         shell: pwsh
         run: |
